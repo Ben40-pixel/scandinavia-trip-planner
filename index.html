@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Road Trip Planner Scandinavie</title>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .filter-group {
+            margin-bottom: 10px;
+        }
+        .filter-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .route-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        button {
+            padding: 8px 12px;
+            background: #4285F4;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+        button:hover {
+            background: #3367D6;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <div class="filter-title">Filtres</div>
+        
+        <div class="filter-group">
+            <div>Hébergements:</div>
+            <input type="checkbox" id="filter-hotels" checked> <label for="filter-hotels">Hôtels</label>
+            <input type="checkbox" id="filter-airbnb" checked> <label for="filter-airbnb">Airbnb</label>
+            <input type="checkbox" id="filter-park4night" checked> <label for="filter-park4night">Park4night</label>
+            <input type="checkbox" id="filter-camping" checked> <label for="filter-camping">Camping</label>
+        </div>
+        
+        <div class="filter-group">
+            <div>Restauration:</div>
+            <input type="checkbox" id="filter-restaurants" checked> <label for="filter-restaurants">Restaurants</label>
+        </div>
+        
+        <div class="filter-group">
+            <div>Activités:</div>
+            <input type="checkbox" id="filter-paid-activities" checked> <label for="filter-paid-activities">Payantes</label>
+            <input type="checkbox" id="filter-free-activities" checked> <label for="filter-free-activities">Gratuites</label>
+        </div>
+        
+        <div class="filter-group">
+            <div>Points d'intérêt:</div>
+            <input type="checkbox" id="filter-nature" checked> <label for="filter-nature">Nature</label>
+        </div>
+    </div>
+    
+    <div class="route-controls">
+        <div>Planifiez votre itinéraire:</div>
+        <button id="start-route">Commencer un itinéraire</button>
+        <button id="clear-route" disabled>Effacer l'itinéraire</button>
+        <button id="save-route" disabled>Sauvegarder</button>
+        <div id="route-info"></div>
+    </div>
+    
+    <div id="map"></div>
+
+    <script>
+        // Variables globales
+        let map;
+        let directionsService;
+        let directionsRenderer;
+        let markers = [];
+        let routeMode = false;
+        let waypoints = [];
+        
+        // Points d'intérêt par catégorie (sample data)
+        const pointsOfInterest = {
+            hotels: [
+                { position: { lat: 59.329, lng: 18.068 }, title: "Grand Hôtel Stockholm", type: "hotel", description: "Hôtel 5 étoiles au centre de Stockholm" },
+                { position: { lat: 60.167, lng: 24.952 }, title: "Hotel Kämp", type: "hotel", description: "Hôtel de luxe à Helsinki" }
+            ],
+            airbnb: [
+                { position: { lat: 59.913, lng: 10.739 }, title: "Appartement au centre d'Oslo", type: "airbnb", description: "Bel appartement avec vue" },
+                { position: { lat: 60.171, lng: 24.941 }, title: "Studio design à Helsinki", type: "airbnb", description: "Studio moderne bien situé" }
+            ],
+            park4night: [
+                { position: { lat: 61.5, lng: 23.79 }, title: "Park4night Tampere", type: "park4night", description: "Spot tranquille près du lac" },
+                { position: { lat: 59.8, lng: 10.2 }, title: "Park4night Drammen", type: "park4night", description: "Place gratuite avec belle vue" }
+            ],
+            camping: [
+                { position: { lat: 60.6, lng: 17.4 }, title: "Camping Gävle", type: "camping", description: "Camping 3 étoiles avec accès à la mer" },
+                { position: { lat: 58.4, lng: 15.6 }, title: "Camping Linköping", type: "camping", description: "Camping familial avec activités" }
+            ],
+            restaurants: [
+                { position: { lat: 59.332, lng: 18.065 }, title: "Restaurant Oaxen Krog", type: "restaurant", description: "Restaurant gastronomique suédois" },
+                { position: { lat: 59.919, lng: 10.734 }, title: "Maaemo", type: "restaurant", description: "Restaurant 3 étoiles Michelin à Oslo" }
+            ],
+            paidActivities: [
+                { position: { lat: 59.923, lng: 10.736 }, title: "Musée Munch", type: "paid-activity", description: "Musée d'art à Oslo" },
+                { position: { lat: 59.33, lng: 18.09 }, title: "Vasa Museum", type: "paid-activity", description: "Musée maritime à Stockholm" }
+            ],
+            freeActivities: [
+                { position: { lat: 60.17, lng: 24.94 }, title: "Parc central de Helsinki", type: "free-activity", description: "Grand parc public" },
+                { position: { lat: 59.91, lng: 10.72 }, title: "Parc Vigeland", type: "free-activity", description: "Parc de sculptures à Oslo" }
+            ],
+            nature: [
+                { position: { lat: 60.5, lng: 8.2 }, title: "Hardangervidda", type: "nature", description: "Parc national norvégien" },
+                { position: { lat: 67.9, lng: 18.6 }, title: "Parc national d'Abisko", type: "nature", description: "Parc national suédois avec aurores boréales" }
+            ]
+        };
+        
+        // Initialisation de la carte
+        function initMap() {
+            // Centrer la carte sur la Scandinavie
+            const scandinaviaCenter = { lat: 62.0, lng: 15.0 };
+            
+            map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 4,
+                center: scandinaviaCenter
+            });
+            
+            // Initialiser le service de directions
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer({
+                map: map,
+                draggable: true
+            });
+            
+            // Appliquer les filtres initiaux
+            applyFilters();
+            
+            // Ajouter les écouteurs d'événements pour les filtres
+            document.querySelectorAll('.filter-group input').forEach(input => {
+                input.addEventListener('change', applyFilters);
+            });
+            
+            // Boutons d'itinéraire
+            document.getElementById('start-route').addEventListener('click', startRouteMode);
+            document.getElementById('clear-route').addEventListener('click', clearRoute);
+            document.getElementById('save-route').addEventListener('click', saveRoute);
+        }
+        
+        // Appliquer les filtres pour afficher/masquer les marqueurs
+        function applyFilters() {
+            // Effacer les marqueurs existants
+            clearMarkers();
+            
+            // Vérifier quels filtres sont activés
+            const showHotels = document.getElementById('filter-hotels').checked;
+            const showAirbnb = document.getElementById('filter-airbnb').checked;
+            const showPark4night = document.getElementById('filter-park4night').checked;
+            const showCamping = document.getElementById('filter-camping').checked;
+            const showRestaurants = document.getElementById('filter-restaurants').checked;
+            const showPaidActivities = document.getElementById('filter-paid-activities').checked;
+            const showFreeActivities = document.getElementById('filter-free-activities').checked;
+            const showNature = document.getElementById('filter-nature').checked;
+            
+            // Créer les marqueurs en fonction des filtres
+            if (showHotels) createMarkers(pointsOfInterest.hotels, 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png');
+            if (showAirbnb) createMarkers(pointsOfInterest.airbnb, 'http://maps.google.com/mapfiles/ms/icons/purple-dot.png');
+            if (showPark4night) createMarkers(pointsOfInterest.park4night, 'http://maps.google.com/mapfiles/ms/icons/green-dot.png');
+            if (showCamping) createMarkers(pointsOfInterest.camping, 'http://maps.google.com/mapfiles/ms/icons/yellow-dot.png');
+            if (showRestaurants) createMarkers(pointsOfInterest.restaurants, 'http://maps.google.com/mapfiles/ms/icons/red-dot.png');
+            if (showPaidActivities) createMarkers(pointsOfInterest.paidActivities, 'http://maps.google.com/mapfiles/ms/icons/orange-dot.png');
+            if (showFreeActivities) createMarkers(pointsOfInterest.freeActivities, 'http://maps.google.com/mapfiles/ms/icons/ltblue-dot.png');
+            if (showNature) createMarkers(pointsOfInterest.nature, 'http://maps.google.com/mapfiles/ms/icons/pink-dot.png');
+        }
+        
+        // Créer des marqueurs pour un groupe de points d'intérêt
+        function createMarkers(points, iconUrl) {
+            points.forEach(point => {
+                const marker = new google.maps.Marker({
+                    position: point.position,
+                    map: map,
+                    title: point.title,
+                    icon: iconUrl
+                });
+                
+                // Ajouter une fenêtre d'info au clic sur le marqueur
+                const infoWindow = new google.maps.InfoWindow({
+                    content: `<div><h3>${point.title}</h3><p>${point.description}</p>${routeMode ? '<button onclick="addToRoute(' + point.position.lat + ', ' + point.position.lng + ')">Ajouter à l\'itinéraire</button>' : ''}</div>`
+                });
+                
+                marker.addListener('click', function() {
+                    infoWindow.open(map, marker);
+                    
+                    if (routeMode) {
+                        // En mode itinéraire, mettre à jour le contenu pour inclure le bouton
+                        infoWindow.setContent(`<div><h3>${point.title}</h3><p>${point.description}</p><button onclick="addToRoute(${point.position.lat}, ${point.position.lng}, '${point.title}')">Ajouter à l'itinéraire</button></div>`);
+                    }
+                });
+                
+                markers.push(marker);
+            });
+        }
+        
+        // Effacer tous les marqueurs de la carte
+        function clearMarkers() {
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+        }
+        
+        // Démarrer le mode itinéraire
+        function startRouteMode() {
+            routeMode = true;
+            document.getElementById('start-route').disabled = true;
+            document.getElementById('clear-route').disabled = false;
+            document.getElementById('save-route').disabled = false;
+            
+            // Réinitialiser les waypoints
+            waypoints = [];
+            
+            // Afficher un message pour guider l'utilisateur
+            document.getElementById('route-info').textContent = "Cliquez sur les points d'intérêt pour les ajouter à votre itinéraire.";
+        }
+        
+        // Ajouter un point à l'itinéraire
+        function addToRoute(lat, lng, title) {
+            const waypoint = {
+                location: new google.maps.LatLng(lat, lng),
+                title: title
+            };
+            
+            waypoints.push(waypoint);
+            
+            // Mettre à jour l'itinéraire
+            if (waypoints.length > 1) {
+                calculateAndDisplayRoute();
+            }
+            
+            // Mettre à jour l'info
+            document.getElementById('route-info').textContent = `${waypoints.length} points dans l'itinéraire`;
+        }
+        
+        // Calculer et afficher l'itinéraire
+        function calculateAndDisplayRoute() {
+            const waypointsForDirections = waypoints.slice(1, -1).map(wp => ({
+                location: wp.location,
+                stopover: true
+            }));
+            
+            directionsService.route({
+                origin: waypoints[0].location,
+                destination: waypoints[waypoints.length - 1].location,
+                waypoints: waypointsForDirections,
+                optimizeWaypoints: false,
+                travelMode: google.maps.TravelMode.DRIVING
+            }, (response, status) => {
+                if (status === 'OK') {
+                    directionsRenderer.setDirections(response);
+                } else {
+                    window.alert('Erreur de calcul d\'itinéraire: ' + status);
+                }
+            });
+        }
+        
+        // Effacer l'itinéraire actuel
+        function clearRoute() {
+            waypoints = [];
+            directionsRenderer.setDirections({ routes: [] });
+            document.getElementById('route-info').textContent = "";
+            document.getElementById('start-route').disabled = false;
+            document.getElementById('clear-route').disabled = true;
+            document.getElementById('save-route').disabled = true;
+            routeMode = false;
+        }
+        
+        // Sauvegarder l'itinéraire (envoyer à Bubble)
+        function saveRoute() {
+            const routeData = {
+                waypoints: waypoints.map(wp => ({
+                    lat: wp.location.lat(),
+                    lng: wp.location.lng(),
+                    title: wp.title
+                }))
+            };
+            
+            // Envoyer les données à Bubble via la fonction de callback
+            if (window.parent && window.parent.bubbleRouteCallback) {
+                window.parent.bubbleRouteCallback(routeData);
+                alert("Itinéraire sauvegardé avec succès!");
+            } else {
+                console.log("Données de l'itinéraire à envoyer à Bubble:", routeData);
+                alert("Itinéraire sauvegardé (mode test)");
+            }
+        }
+        
+        // Fonction pour être appelée par l'API de chargement Google Maps
+        window.initMapCallback = function() {
+            initMap();
+        };
+    </script>
+    
+    <!-- Remplacer YOUR_API_KEY par votre clé API Google Maps -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMapCallback"></script>
+</body>
+</html>
